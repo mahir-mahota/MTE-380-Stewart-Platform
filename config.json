@@ -1,0 +1,20 @@
+{
+  "timestamp": "2025-11-11T16:49:37.981328",
+  "camera": {
+    "index": 0,
+    "frame_width": 640,
+    "frame_height": 480
+  },
+  "ball_detection": {
+    "lower_hsv": [
+      9.0,
+      146.9,
+      153.8
+    ],
+    "upper_hsv": [
+      26.0,
+      255.0,
+      255.0
+    ]
+  }
+}

@@ -2,85 +2,55 @@ import numpy as np
 from PID import PID
 
 class PositionBalancer:
-    Kp = 1.0
-    Ki = 0.0
-    Kd = 0.1
-
     def __init__(self, platform_points):
-        self.platform_points = platform_points
-        self.platform = Balancer(platform_points)
-        self.position_pids = [PID(self.Kp, self.Ki, self.Kd) for _ in range(2)]
-        
-        self.desired_pos = np.array([0.0, 0.0, 0.0])
+        self.platform_points = np.array(platform_points)  # Nx3
+        self.balancer = Balancer(platform_points)
+
+        # Single PID for both axes
+        self.pid = PID(Kp=0.1, Ki=0.0, Kd=0.0)
+
+        self.desired_pos = np.array([0.0, 0.0])  # target ball position
+        self.prev_heights = np.zeros(len(platform_points))  # last servo heights
 
     def step(self, meas_pos, dt):
-        if meas_pos is not None:
-            meas_pos_np = np.array([meas_pos[0], meas_pos[1], 0.0])
-            pos_error = self.desired_pos - meas_pos_np
+        if meas_pos is None or np.any(np.isnan(meas_pos)):
+            return np.zeros(len(self.platform_points)).tolist()
 
-            desired_accel = []
-            for i in range(2):
-                accel_cmd = self.position_pids[i].compute(pos_error[i], dt)
-                desired_accel.append(accel_cmd)
-            
-            self.platform.desired_accel = desired_accel + [0.0]
-        return self.platform.step(meas_pos, dt) 
+        meas_pos_np = np.array(meas_pos[:2])
+        pos_error = self.desired_pos - meas_pos_np
+        print("Position error:", pos_error)
+
+        # --- PID outputs a 2D tilt vector directly ---
+        desired_tilt = self.pid.compute(pos_error, dt)
+        desired_tilt = list(desired_tilt)
+        tmp = desired_tilt[1]
+        desired_tilt[1] = -desired_tilt[0]
+        desired_tilt[0] = tmp
+        desired_tilt = np.array(desired_tilt)
+        print("Desired tilt:", desired_tilt)
+
+        # --- Compute absolute servo heights for that tilt ---
+        servo_heights = np.array(self.balancer.compute_servo_heights(desired_tilt))
+
+        # --- Convert to delta heights relative to previous ---
+        delta_h = servo_heights - self.prev_heights
+
+        self.prev_heights = servo_heights
+
+        return delta_h.tolist()
 
 
 class Balancer:
-    Kp = 1.0
-    Ki = 0.0
-    Kd = 0.1
-
     def __init__(self, platform_points):
-        self.platform_points = platform_points
-        self.platform_pids = [PID(self.Kp, self.Ki, self.Kd) for _ in platform_points]
+        self.platform_points = np.array(platform_points)
+        self.A = self._build_A_matrix(platform_points)
 
-        self.prev_pos = None
-        self.pos = None
+    def _build_A_matrix(self, platform_points):
+        A = []
+        for (x, y, z) in platform_points:
+            A.append([-y, x])
+        return np.array(A)
 
-        self.prev_vel = None
-        self.vel = None
-
-        self.accel = None
-
-        self.desired_accel = [0, 0, 0]
-
-    def update(self, meas_pos, dt):
-        if self.pos is not None:
-            self.prev_pos = self.pos    
-            self.prev_vel = self.vel
-        
-        self.pos = meas_pos
-
-        if self.prev_pos is not None and self.pos is not None:
-            self.vel = (self.pos - self.prev_pos)/dt
-        
-        if self.prev_vel is not None and self.pos is not None:
-            self.accel = (self.vel - self.prev_vel)/dt
-            
-    def step(self, meas_pos, dt):
-        self.update(meas_pos, dt)
-        delta_list = self._project_control()
-
-        for i, pid in enumerate(self.platform_pids):
-            delta_list[i] = pid.compute(delta_list[i], dt)
-        
-        return delta_list
-
-    def _project_control(self):
-        accel_des = np.array(self.desired_accel)
-        if self.accel is None: return [0 for _ in self.platform_points]
-        accel = np.array(self.accel)
-
-        accel_diff = accel_des - accel
-        
-        accel_mags = []
-        for point in self.platform_points:
-            dir = -np.array(point)
-            dir = dir / np.linalg.norm(dir)
-
-            mag = np.dot(dir, accel_diff)
-            accel_mags.append(mag)
-
-        return accel_mags
+    def compute_servo_heights(self, desired_tilt):
+        h = self.A @ desired_tilt
+        return h.tolist()
