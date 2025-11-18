@@ -8,7 +8,7 @@ class PositionBalancer:
         self.balancer = Balancer(self.platform_points)
 
         # 2D PID (x,y) → tilt commands
-        self.pid = PID(Kp=0.01, Ki=0.0, Kd=0.00)
+        self.pid = PID(Kp=0.00016, Ki=0.00001, Kd=0.00013, integral_limit=10000)
 
         self.desired_pos = np.array([0.0, 0.0])
         self.prev_heights = np.zeros(len(platform_points))
@@ -21,6 +21,7 @@ class PositionBalancer:
 
         ball = np.array(meas_pos[:2])
         error = self.desired_pos - ball
+        if np.linalg.norm(error) < 20: error -= error
 
         raw_tilt = np.array(self.pid.compute(error, dt))
 
@@ -37,10 +38,15 @@ class PositionBalancer:
 
         # convert to servo heights
         servo_heights = np.array(self.balancer.compute_servo_heights(raw_tilt))
-
+        print(f"NEED: {servo_heights}")
+        servo_heights += 15
+        servo_heights = np.clip(servo_heights, 0, 30)
+        print(self.prev_heights)
+        servo_heights = np.round(servo_heights)
         # output deltas
         delta = servo_heights-self.prev_heights
-        np.clip(delta, -1, 1)
+        # delta = np.clip(delta, -1, 1)
+        print(delta)
         self.prev_heights += delta
 
         return delta.tolist()
