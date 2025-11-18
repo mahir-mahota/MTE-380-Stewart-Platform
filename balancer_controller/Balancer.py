@@ -13,7 +13,7 @@ class PositionBalancer:
         self.desired_pos = np.array([0.0, 0.0])
         self.prev_heights = np.zeros(len(platform_points))
         self.filtered_tilt = np.array([0.0, 0.0])
-
+        self.curr_error = np.array([0.0,0.0])
 
     def step(self, meas_pos, dt):
         if meas_pos is None or np.any(np.isnan(meas_pos)):
@@ -21,6 +21,7 @@ class PositionBalancer:
 
         ball = np.array(meas_pos[:2])
         error = self.desired_pos - ball
+        self.curr_error = error
         if np.linalg.norm(error) < 20: error -= error
 
         raw_tilt = np.array(self.pid.compute(error, dt))
