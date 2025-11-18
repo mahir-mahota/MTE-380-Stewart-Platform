@@ -23,8 +23,11 @@ class BallTracker:
         self.frame_h = cfg["camera"]["frame_height"]
         self.cam_index = cfg["camera"]["index"]
 
+        # initial camera center (will be REPLACED by point centroid)
         self.frame_center = np.array([self.frame_w // 2, self.frame_h // 2])
-        self.platform_points = []
+
+        self.platform_points_abs = []   # store absolute pixel coordinates
+        self.platform_points_rel = []   # will be computed later
         self.selected_points = []
         self.ball_pos = None
         self.balancer = None
@@ -95,11 +98,11 @@ class BallTracker:
 
     # ---------------- MOUSE ----------------
     def mouse_callback(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN and len(self.platform_points) < 3:
-            rel = np.array([x - self.frame_center[0], y - self.frame_center[1], 0.0])
-            self.platform_points.append(rel)
+        if event == cv2.EVENT_LBUTTONDOWN and len(self.platform_points_abs) < 3:
+            abs_pt = np.array([x, y], dtype=float)
+            self.platform_points_abs.append(abs_pt)
             self.selected_points.append((x, y))
-            print(f"[POINT] Platform point {len(self.platform_points)} selected at {rel}")
+            print(f"[POINT] Platform point {len(self.platform_points_abs)} selected at ABS {abs_pt}")
 
     # ---------------- DETECTION ----------------
     def detect_ball(self, frame):
@@ -117,6 +120,7 @@ class BallTracker:
             (x, y), radius = cv2.minEnclosingCircle(c)
             if radius < 5:
                 return None
+
             rel_x = x - self.frame_center[0]
             rel_y = y - self.frame_center[1]
             return (rel_x, rel_y, int(radius))
@@ -128,11 +132,17 @@ class BallTracker:
     # ---------------- DRAWING ----------------
     def draw_overlay(self, frame):
         try:
-            cv2.drawMarker(frame, tuple(self.frame_center), (255, 255, 255), cv2.MARKER_CROSS, 15, 2)
+            # draw the NEW computed center
+            cv2.drawMarker(frame, tuple(self.frame_center.astype(int)), (255, 255, 255),
+                           cv2.MARKER_CROSS, 15, 2)
+
+            # draw selected calibration points
             for i, p in enumerate(self.selected_points):
                 cv2.circle(frame, p, 6, (0, 255, 0), -1)
                 cv2.putText(frame, f"P{i+1}", (p[0]+8, p[1]-8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+            # draw ball
             if self.ball_pos is not None:
                 rel_x, rel_y, radius = self.ball_pos
                 abs_x = int(rel_x + self.frame_center[0])
@@ -140,7 +150,7 @@ class BallTracker:
                 cv2.circle(frame, (abs_x, abs_y), radius, (0, 255, 255), 2)
                 cv2.circle(frame, (abs_x, abs_y), 3, (0, 255, 255), -1)
 
-            # --- Display current PID gains ---
+            # Display PID gains
             if self.balancer:
                 gains_text = f"Kp: {self.balancer.pid.Kp:.5f}  Ki: {self.balancer.pid.Ki:.5f}  Kd: {self.balancer.pid.Kd:.5f}"
                 cv2.putText(frame, gains_text, (10, 20),
@@ -167,7 +177,7 @@ class BallTracker:
     # ---------------- MAIN LOOP ----------------
     def run(self):
         collecting_points = True
-        control_period = 0.05  # 50ms loop
+        control_period = 0.05  # 100ms loop
         last_control_time = time.time()
 
         while True:
@@ -180,21 +190,47 @@ class BallTracker:
 
                 if collecting_points:
                     display = self.draw_overlay(frame.copy())
-                    cv2.putText(display, f"Select {3 - len(self.platform_points)} more points.",
+                    cv2.putText(display, f"Select {3 - len(self.platform_points_abs)} more points.",
                                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                     cv2.imshow("Ball Tracker", display)
                     key = cv2.waitKey(1) & 0xFF
 
                     if key == ord(' '):
-                        if len(self.platform_points) == 3:
-                            collecting_points = False
-                            print("[INFO] Platform points fixed. Starting tracking...")
-                            print(f"Platform points (relative): {self.platform_points}")
-                            self.balancer = PositionBalancer(self.platform_points)
+                        if len(self.platform_points_abs) == 3:
+
+                            # ---- Compute centroid in ABSOLUTE coordinates ----
+                            arr = np.array(self.platform_points_abs)  # Nx2
+                            centroid = np.mean(arr, axis=0)           # (cx, cy)
+
+                            print(f"[INFO] Platform centroid (ABS): {centroid}")
+
+                            # update frame center
+                            self.frame_center = centroid.copy()
+
+                            # convert to REL coordinates (centered at centroid)
+                            rel_points = []
+                            for p in arr:
+                                rel = np.array([p[0] - centroid[0],
+                                                p[1] - centroid[1],
+                                                0.0])
+                                rel_points.append(rel)
+
+                            self.platform_points_rel = rel_points
+
+                            print("[INFO] Relative platform points:", self.platform_points_rel)
+
+                            # create balancer
+                            self.balancer = PositionBalancer(self.platform_points_rel)
+
                             self.prev_time = time.time()
                             last_control_time = self.prev_time
+
+                            collecting_points = False
+                            print("[INFO] Platform points fixed. Starting tracking...")
+
                         else:
                             print("[WARN] Please select exactly 3 points first.")
+
                     elif key == ord('q'):
                         break
                     continue
@@ -240,5 +276,5 @@ class BallTracker:
 
 
 if __name__ == "__main__":
-    tracker = BallTracker("config.json", serial_port="COM7", baud_rate=115200)
-    tracker.run()
+        tracker = BallTracker("config.json", serial_port="COM7", baud_rate=115200)
+        tracker.run()

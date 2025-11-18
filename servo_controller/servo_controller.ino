@@ -19,12 +19,11 @@ int s3_angle = 0;
 
 // === Convert microseconds to PCA9685 ticks ===
 uint16_t usToTicks(uint16_t us) {
-    return (uint16_t)((us * SERVO_FREQ * 4096.0) / 1000000.0);
+    return (uint16_t)((us * SERVO_FREQ * 4096) / 1000000);
 }
 
 // === Set servo angle on given channel ===
 void setServoDeg(uint8_t ch, float deg) {
-    deg = constrain(deg, MIN_ANGLE, 30); // safety check
     uint16_t us = SERVO_MIN_US + (uint32_t)((deg - MIN_ANGLE) * (SERVO_MAX_US - SERVO_MIN_US) / (MAX_ANGLE - MIN_ANGLE));
     uint16_t ticks = usToTicks(us);
     pca.setPWM(ch, 0, ticks);
@@ -32,7 +31,7 @@ void setServoDeg(uint8_t ch, float deg) {
 
 void setup() {
     Serial.begin(115200);
-    Wire.begin();
+//    Wire.begin();
     pca.begin();
     delay(20);
     pca.setPWMFreq(SERVO_FREQ);
@@ -52,9 +51,9 @@ void loop() {
         int d3 = Serial.parseInt();
 
         // Update internal angles safely, applying constraints
-        s1_angle = constrain(s1_angle + d1, MIN_ANGLE, 50);
-        s2_angle = constrain(s2_angle + d2, MIN_ANGLE, 50);
-        s3_angle = constrain(s3_angle + d3, MIN_ANGLE, 50);
+        s1_angle = constrain(d1, MIN_ANGLE, 30);
+        s2_angle = constrain(d2, MIN_ANGLE, 30);
+        s3_angle = constrain(d3, MIN_ANGLE, 30);
 
         // Send to servos, adding offsets
         setServoDeg(0, s1_angle + S1_OFFSET);
@@ -62,8 +61,8 @@ void loop() {
         setServoDeg(2, s3_angle + S3_OFFSET);
 
         // Print all 3 angles
-//        Serial.println(s1_angle);
-//        Serial.println(s2_angle);
-//        Serial.println(s3_angle);
+        Serial.println(d1);
+        Serial.println(d2);
+        Serial.println(d3);
     }
 }
