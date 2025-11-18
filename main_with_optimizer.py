@@ -8,6 +8,7 @@ import serial
 import traceback
 import threading
 from pid_optimizer import PIDOptimizer, OptimizationResult
+from advanced_pid_optimizer import AdvancedPIDOptimizer
 from typing import List, Tuple, Optional
 
 
@@ -42,6 +43,7 @@ class BallTrackerWithOptimizer:
         # Optimization mode
         self.optimization_mode = False
         self.optimizer = PIDOptimizer({'Kp': 0.00016, 'Ki': 0.00001, 'Kd': 0.00013})
+        self.advanced_optimizer = None  # Created when needed
         self.current_test_trajectory = []
         self.current_test_errors = []
         self.test_start_time = None
@@ -80,13 +82,21 @@ class BallTrackerWithOptimizer:
         print("[INFO] BallTrackerWithOptimizer initialized.")
         print("Click 3 platform points, press SPACE. Then:")
         print("  - Click anywhere to set target position")
-        print("  - Press 'o' to start optimization mode")
-        print("  - Press 'g' for grid search optimization")
-        print("  - Press 'r' for random search optimization")
-        print("  - Press 'a' for adaptive search optimization")
+        print("\nBASIC OPTIMIZATION (slower):")
+        print("  - Press 'g' for grid search")
+        print("  - Press 'r' for random search")
+        print("  - Press 'a' for adaptive search")
+        print("\nADVANCED OPTIMIZATION (faster & better):")
+        print("  - Press 'd' for Differential Evolution (BEST - 15-30s)")
+        print("  - Press 'b' for Bayesian Optimization (FASTEST - 10-20s)")
+        print("  - Press 'c' for CMA-ES (STATE-OF-ART - 10-20s)")
+        print("  - Press 'w' for Particle Swarm (15-25s)")
+        print("  - Press 'n' for Simulated Annealing (20-40s)")
+        print("  - Press 'x' to COMPARE ALL METHODS (2-3 min)")
+        print("\nOTHER:")
+        print("  - Press 'e' to evaluate current performance")
         print("  - Press 's' to save optimization results")
         print("  - Press 'p' to plot optimization results")
-        print("  - Press 'e' to evaluate current performance")
         print("  - Press 'q' to quit")
 
         self.create_pid_trackbars()
@@ -359,6 +369,173 @@ class BallTrackerWithOptimizer:
             cv2.setTrackbarPos("Kd x1e-5", "PID Tuners", int(best_result.Kd * 100000))
 
     # ============================================================
+    #       ADVANCED OPTIMIZATION METHODS
+    # ============================================================
+    def _initialize_advanced_optimizer(self):
+        """Initialize the advanced optimizer if not already created."""
+        if self.advanced_optimizer is None:
+            self.advanced_optimizer = AdvancedPIDOptimizer(
+                self.test_pid_parameters,
+                {'Kp': self.balancer.pid.Kp, 'Ki': self.balancer.pid.Ki, 'Kd': self.balancer.pid.Kd}
+            )
+    
+    def _apply_optimization_result(self, result: dict):
+        """Apply optimization result to the balancer and update UI."""
+        if result and self.balancer:
+            self.balancer.pid.Kp = result['Kp']
+            self.balancer.pid.Ki = result['Ki']
+            self.balancer.pid.Kd = result['Kd']
+            
+            # Update trackbars (clamp to max value)
+            cv2.setTrackbarPos("Kp x1e-5", "PID Tuners", min(int(result['Kp'] * 100000), 100))
+            cv2.setTrackbarPos("Ki x1e-5", "PID Tuners", min(int(result['Ki'] * 100000), 100))
+            cv2.setTrackbarPos("Kd x1e-5", "PID Tuners", min(int(result['Kd'] * 100000), 100))
+            
+            print(f"\n✓ Applied optimized parameters:")
+            print(f"  Kp = {result['Kp']:.8f}")
+            print(f"  Ki = {result['Ki']:.8f}")
+            print(f"  Kd = {result['Kd']:.8f}")
+            print(f"  Score = {result['score']:.4f}")
+            print(f"  Time = {result['time']:.1f}s")
+    
+    def run_differential_evolution(self):
+        """Run Differential Evolution optimization (BEST OVERALL)."""
+        if not self.balancer:
+            print("[ERROR] Initialize tracking first")
+            return
+        
+        self._initialize_advanced_optimizer()
+        
+        current_kp = self.balancer.pid.Kp
+        current_ki = self.balancer.pid.Ki
+        current_kd = self.balancer.pid.Kd
+        
+        bounds = {
+            'Kp': (current_kp * 0.5, current_kp * 2.0),
+            'Ki': (current_ki * 0.5, current_ki * 2.0),
+            'Kd': (current_kd * 0.5, current_kd * 2.0)
+        }
+        
+        result = self.advanced_optimizer.differential_evolution_optimization(bounds, max_iterations=30)
+        self._apply_optimization_result(result)
+    
+    def run_bayesian_optimization(self):
+        """Run Bayesian Optimization (MOST EFFICIENT)."""
+        if not self.balancer:
+            print("[ERROR] Initialize tracking first")
+            return
+        
+        self._initialize_advanced_optimizer()
+        
+        current_kp = self.balancer.pid.Kp
+        current_ki = self.balancer.pid.Ki
+        current_kd = self.balancer.pid.Kd
+        
+        bounds = {
+            'Kp': (current_kp * 0.5, current_kp * 2.0),
+            'Ki': (current_ki * 0.5, current_ki * 2.0),
+            'Kd': (current_kd * 0.5, current_kd * 2.0)
+        }
+        
+        result = self.advanced_optimizer.bayesian_optimization(bounds, n_iterations=25)
+        self._apply_optimization_result(result)
+    
+    def run_cma_es_optimization(self):
+        """Run CMA-ES optimization (STATE-OF-THE-ART)."""
+        if not self.balancer:
+            print("[ERROR] Initialize tracking first")
+            return
+        
+        self._initialize_advanced_optimizer()
+        
+        current_kp = self.balancer.pid.Kp
+        current_ki = self.balancer.pid.Ki
+        current_kd = self.balancer.pid.Kd
+        
+        bounds = {
+            'Kp': (current_kp * 0.5, current_kp * 2.0),
+            'Ki': (current_ki * 0.5, current_ki * 2.0),
+            'Kd': (current_kd * 0.5, current_kd * 2.0)
+        }
+        
+        result = self.advanced_optimizer.covariance_matrix_adaptation(bounds, n_iterations=30)
+        self._apply_optimization_result(result)
+    
+    def run_particle_swarm_optimization(self):
+        """Run Particle Swarm Optimization."""
+        if not self.balancer:
+            print("[ERROR] Initialize tracking first")
+            return
+        
+        self._initialize_advanced_optimizer()
+        
+        current_kp = self.balancer.pid.Kp
+        current_ki = self.balancer.pid.Ki
+        current_kd = self.balancer.pid.Kd
+        
+        bounds = {
+            'Kp': (current_kp * 0.5, current_kp * 2.0),
+            'Ki': (current_ki * 0.5, current_ki * 2.0),
+            'Kd': (current_kd * 0.5, current_kd * 2.0)
+        }
+        
+        result = self.advanced_optimizer.particle_swarm_optimization(bounds, n_particles=15, n_iterations=30)
+        self._apply_optimization_result(result)
+    
+    def run_simulated_annealing_optimization(self):
+        """Run Simulated Annealing optimization."""
+        if not self.balancer:
+            print("[ERROR] Initialize tracking first")
+            return
+        
+        self._initialize_advanced_optimizer()
+        
+        current_kp = self.balancer.pid.Kp
+        current_ki = self.balancer.pid.Ki
+        current_kd = self.balancer.pid.Kd
+        
+        bounds = {
+            'Kp': (current_kp * 0.5, current_kp * 2.0),
+            'Ki': (current_ki * 0.5, current_ki * 2.0),
+            'Kd': (current_kd * 0.5, current_kd * 2.0)
+        }
+        
+        result = self.advanced_optimizer.simulated_annealing_optimization(bounds, max_iterations=50)
+        self._apply_optimization_result(result)
+    
+    def run_compare_all_methods(self):
+        """Run all optimization methods and compare (takes 2-3 minutes)."""
+        if not self.balancer:
+            print("[ERROR] Initialize tracking first")
+            return
+        
+        self._initialize_advanced_optimizer()
+        
+        current_kp = self.balancer.pid.Kp
+        current_ki = self.balancer.pid.Ki
+        current_kd = self.balancer.pid.Kd
+        
+        bounds = {
+            'Kp': (current_kp * 0.5, current_kp * 2.0),
+            'Ki': (current_ki * 0.5, current_ki * 2.0),
+            'Kd': (current_kd * 0.5, current_kd * 2.0)
+        }
+        
+        print("\n" + "="*60)
+        print("COMPARING ALL OPTIMIZATION METHODS")
+        print("This will take 2-3 minutes...")
+        print("="*60)
+        
+        results = self.advanced_optimizer.compare_all_methods(bounds)
+        
+        # Find and apply the best result
+        best_method = min(results.items(), key=lambda x: x[1]['score'])
+        self._apply_optimization_result(best_method[1])
+        
+        # Print timing summary
+        self.advanced_optimizer.print_timing_summary()
+
+    # ============================================================
     #       DETECTION
     # ============================================================
     def detect_ball(self, frame):
@@ -539,14 +716,31 @@ class BallTrackerWithOptimizer:
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
                     break
+                # Basic optimization methods
                 elif key == ord("g"):
                     self.run_grid_search_optimization()
                 elif key == ord("r"):
                     self.run_random_search_optimization()
                 elif key == ord("a"):
                     self.run_adaptive_search_optimization()
+                # Advanced optimization methods
+                elif key == ord("d"):
+                    self.run_differential_evolution()
+                elif key == ord("b"):
+                    self.run_bayesian_optimization()
+                elif key == ord("c"):
+                    self.run_cma_es_optimization()
+                elif key == ord("w"):
+                    self.run_particle_swarm_optimization()
+                elif key == ord("n"):
+                    self.run_simulated_annealing_optimization()
+                elif key == ord("x"):
+                    self.run_compare_all_methods()
+                # Utility functions
                 elif key == ord("s"):
                     self.optimizer.save_results()
+                    if self.advanced_optimizer:
+                        self.advanced_optimizer.print_timing_summary()
                 elif key == ord("p"):
                     self.optimizer.plot_results()
                 elif key == ord("e"):
