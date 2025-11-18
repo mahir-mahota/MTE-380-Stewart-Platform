@@ -35,16 +35,15 @@ class PositionBalancer:
         # smooth the tilt
 
 
-        # # convert to servo heights
-        # servo_heights = np.array(self.balancer.compute_servo_heights(raw_tilt))
+        # convert to servo heights
+        servo_heights = np.array(self.balancer.compute_servo_heights(raw_tilt))
 
-        # # output deltas
-        # delta = servo_heights-self.prev_heights
-        # np.clip(delta, -10, 10)
-        # delta[1] 
-        # self.prev_heights += delta
+        # output deltas
+        delta = servo_heights-self.prev_heights
+        np.clip(delta, -1, 1)
+        self.prev_heights += delta
 
-        return [tilt_x,0,0]#.tolist()
+        return delta.tolist()
 
 
 
